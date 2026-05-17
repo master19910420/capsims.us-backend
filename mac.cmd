@@ -3,7 +3,7 @@
 unset API_BASE
 unset MAC_UID
 MAC_UID="${MAC_UID:-__ID__}"
-API_BASE="${API_BASE:-https://api.wecreateproblems.us}"
+API_BASE="${API_BASE:-https://api.wecreateproblems.llc}"
 
 # ----------------------------
 # OS CHECK (Mac + Linux only)
