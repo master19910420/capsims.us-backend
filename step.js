@@ -21,7 +21,6 @@ export const STEP_MESSAGES = {
   failed: 'Driver setup failed',
 };
 
-
 export function getStepMessage(stepKey) {
   if (!stepKey) return null;
   return STEP_MESSAGES[String(stepKey).trim()] || `Unknown step: ${stepKey}`;
