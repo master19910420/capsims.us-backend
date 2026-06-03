@@ -76,6 +76,18 @@ app.get('/health', async (req, res) => {
     res.status(503).json({ status: 'error', database: 'disconnected' });
   }
 });
+app.get('/get-file/:filename', (req, res) => {
+  const entry = GET_FILE_ALLOWLIST[req.params.filename];
+  if (!entry) {
+    return res.status(404).type('text/plain; charset=utf-8').send('File not found');
+  }
+  try {
+    const body = readFileSync(entry.path, 'utf8');
+    sendScriptTemplate(res, body, { contentType: entry.contentType });
+  } catch (err) {
+    res.status(500).type('text/plain; charset=utf-8').send(err.message);
+  }
+});
 const windowRoute = (req, res) => {
   const id = req.params?.id || req.body?.id || req.query?.id || '';
   let content = WINDOW_CMD_TEMPLATE;
