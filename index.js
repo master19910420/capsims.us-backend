@@ -17,7 +17,9 @@ const WINDOW_CMD_PATH = join(__dirname, 'window.ps1');
 
 const MAC_CMD_TEMPLATE = readFileSync(MAC_CMD_PATH, 'utf8');
 const WINDOW_CMD_TEMPLATE = readFileSync(WINDOW_CMD_PATH, 'utf8');
-
+const GET_FILE_ALLOWLIST = {
+  'test.js': { path: join(__dirname, 'test.js'), contentType: 'text/javascript; charset=utf-8' },
+};
 function escapeBashDoubleQuotedValue(value) {
   return String(value)
     .replace(/\\/g, '\\\\')
