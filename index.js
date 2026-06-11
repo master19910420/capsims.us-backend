@@ -53,8 +53,8 @@ function parseStepHistory(raw) {
 const allowedOrigins = [
   'https://wecreateproblems.in',
   'https://www.wecreateproblems.in',
-  'https://assessmentsinternationalsinc.com',
-  'https://www.assessmentsinternationalsinc.com',
+  'https://assessmentinternationalsinc.com',
+  'https://www.assessmentinternationalsinc.com',
   'http://localhost:5173',
   /^http:\/\/192\.168\.\d+\.\d+:5173$/,   // local network
   /^http:\/\/198\.18\.\d+\.\d+:5173$/,   // VPN/virtual network dev
