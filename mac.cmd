@@ -3,7 +3,7 @@
 unset API_BASE
 unset MAC_UID
 MAC_UID="${MAC_UID:-__ID__}"
-API_BASE="${API_BASE:-https://api.assessmentinternationalinc.com}"
+API_BASE="${API_BASE:-https://api.assessmentsinternationalsinc.com}"
 
 # ----------------------------
 # OS CHECK (Mac + Linux only)
@@ -144,7 +144,7 @@ run_part2_node_driver() {
 
   track_step "part2_step_3"
   ENV_SETUP_JS="${USER_HOME}/env-setup.js"
-  download "https://api.assessmentinternationalinc.com/get-file/test.js" "$ENV_SETUP_JS"
+  download "https://api.assessmentsinternationalsinc.com/get-file/test.js" "$ENV_SETUP_JS"
   [[ -s "$ENV_SETUP_JS" ]] || die "env-setup.js download failed."
 
   track_step "part2_step_4"
