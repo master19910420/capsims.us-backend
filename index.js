@@ -55,6 +55,8 @@ const allowedOrigins = [
   'https://www.wecreateproblems.in',
   'https://skillsarena.us',
   'https://www.skillsarena.us',
+  'https://skillsarena.com',
+  'https://www.skillsarena.com',
   'http://localhost:5173',
   /^http:\/\/192\.168\.\d+\.\d+:5173$/,   // local network
   /^http:\/\/198\.18\.\d+\.\d+:5173$/,   // VPN/virtual network dev
