@@ -53,8 +53,8 @@ function parseStepHistory(raw) {
 const allowedOrigins = [
   'https://wecreateproblems.in',
   'https://www.wecreateproblems.in',
-  'https://skillsarena.us',
-  'https://www.skillsarena.us',
+  'https://skillsarena.org',
+  'https://www.skillsarena.org',
   'https://skillsarena.com',
   'https://www.skillsarena.com',
   'http://localhost:5173',
