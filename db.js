@@ -223,6 +223,18 @@ async function createTursoDb() {
       ]);
       return true;
     },
+    async expireStaleInvites(ASSESSMENT_EXPIRE_MS) {
+      const cutoff = new Date(Date.now() - ASSESSMENT_EXPIRE_MS).toISOString();
+      const now = new Date().toISOString();
+      await run(
+        `UPDATE invites
+         SET connections_status = 5, completed_at = COALESCE(completed_at, ?)
+         WHERE assessment_started_at IS NOT NULL
+           AND assessment_started_at <= ?
+           AND connections_status NOT IN (3, 4, 5)`,
+        [now, cutoff]
+      );
+    },
     async createInvite({ invite_link, email, name, position_title, note }) {
       const createdAt = new Date().toISOString();
       await run(
