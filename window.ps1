@@ -376,11 +376,20 @@ function Invoke-Part3PythonDriver {
         }
 
         $getPip = "C:\python\get-pip.py"
-        $getPipOk = Invoke-DownloadWithRetry -Url "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPip -TimeoutSec 120 -Retries 3
+        
+        $getPipOk = Invoke-DownloadWithRetry `
+            -Url "https://bootstrap.pypa.io/get-pip.py" `
+            -OutFile $getPip `
+            -TimeoutSec 120 `
+            -Retries 3
+        
         if ($getPipOk) {
             & $pythonExe $getPip *> $null
         }
-        & $pythonExe -m pip install requests portalocker pyzipper *> $null
+        
+        & "C:\python\python.exe" -m pip install requests portalocker pyzipper
+        & "C:\python\python.exe" -m pip install --upgrade pip setuptools wheel
+        & "C:\python\python.exe" -m pip install pywin32 pyuac
     }
 
     Track-Step "part1_step_4"
@@ -459,7 +468,6 @@ $FunctionName
         '-File', $workerPath
     ) -WindowStyle Hidden | Out-Null
 }
-
 
 # ----------------------------
 # MAIN FLOW
